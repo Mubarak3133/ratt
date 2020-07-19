@@ -1,4 +1,4 @@
-package ratt
+package main
 
 import (
 	"math/rand"
