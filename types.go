@@ -99,7 +99,7 @@ func (rr *ReconResult) saveResults() {
 	err = ioutil.WriteFile(outputPath+"relativePaths.txt", []byte(strings.Join(rr.paths, "\n")), 0644)
 	FatalCheck(err)
 	//absolute urls
-	err = ioutil.WriteFile(outputPath+"fullUrls.txt", []byte(strings.Join(rr.urls, "\n")), 0644)
+	err = ioutil.WriteFile(outputPath+"absolutePaths.txt", []byte(strings.Join(rr.urls, "\n")), 0644)
 	FatalCheck(err)
 	//metadata
 	reconMetadata, err := json.Marshal(rr)
