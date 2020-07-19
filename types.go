@@ -72,16 +72,21 @@ func (rr *ReconResult) StartRecon() {
 		FatalCheck(errDir)
 	}
 	rr.fetchResource()
-	rr.parseResourceContent()
-	rr.saveResults()
+	if len(rr.content) != 0 {
+		rr.parseResourceContent()
+		rr.saveResults()
+	}
 }
 
 func (rr *ReconResult) fetchResource() {
-	resp, _ := http.Get(rr.Url.String())
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
-	rr.Headers = resp.Header
-	_ = resp.Body.Close()
-	rr.content = string(bodyBytes)
+	resp, err := http.Get(rr.Url.String())
+	if err != nil && resp != nil {
+		fmt.Println(resp)
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		rr.Headers = resp.Header
+		_ = resp.Body.Close()
+		rr.content = string(bodyBytes)
+	}
 }
 
 func (rr *ReconResult) getOutputFolder() string {
