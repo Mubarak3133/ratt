@@ -4,15 +4,15 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/Static-Flow/ratt"
 	"log"
 	"net/url"
 	"os"
-	"ratt"
 )
 
 func main() {
-	targetPtr := flag.String("singletarget","","target to recon")
-	targetFilePtr := flag.String("targetfile","","file containing targets")
+	targetPtr := flag.String("singletarget", "", "target to recon")
+	targetFilePtr := flag.String("targetfile", "", "file containing targets")
 	flag.Parse()
 	if len(*targetPtr) > 0 && len(*targetFilePtr) > 0 {
 		log.Fatalln("Please on specify singletarget or targetfile")
@@ -26,7 +26,7 @@ func main() {
 		} else {
 			log.Fatalln(err)
 		}
-	}  else {
+	} else {
 		//multi target recon
 		inputFile, err := os.Open(*targetFilePtr)
 		if err != nil {
