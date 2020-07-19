@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/Static-Flow/ratt/pkg"
 	"log"
 	"net/url"
 	"os"
@@ -21,7 +20,7 @@ func main() {
 	}
 	if len(*targetPtr) > 0 { //single target recon
 		if target, err := url.Parse(*targetPtr); err == nil {
-			reconTarget := pkg.ReconResult{Url: *target}
+			reconTarget := ReconResult{Url: *target}
 			reconTarget.StartRecon()
 		} else {
 			log.Fatalln(err)
@@ -38,7 +37,7 @@ func main() {
 			nextTarget := scanner.Text()
 			go func(targetToRecon string) {
 				if targetToReconUrl, err := url.Parse(targetToRecon); err == nil {
-					reconTarget := pkg.ReconResult{Url: *targetToReconUrl}
+					reconTarget := ReconResult{Url: *targetToReconUrl}
 					reconTarget.StartRecon()
 				}
 			}(nextTarget)
