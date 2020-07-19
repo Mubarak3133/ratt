@@ -1,4 +1,4 @@
-package ratt
+package pkg
 
 import (
 	"math/rand"
@@ -11,7 +11,7 @@ func FatalCheck(e error) {
 	}
 }
 
-func CreateInlineJSFileName()string {
+func CreateInlineJSFileName() string {
 	seededRand := rand.New(
 		rand.NewSource(time.Now().UnixNano()))
 	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -19,5 +19,5 @@ func CreateInlineJSFileName()string {
 	for i := range b {
 		b[i] = charset[seededRand.Intn(len(charset))]
 	}
-	return string(b)+".js"
+	return string(b) + ".js"
 }

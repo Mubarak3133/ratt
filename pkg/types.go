@@ -1,4 +1,4 @@
-package ratt
+package pkg
 
 import (
 	"bytes"
@@ -14,8 +14,8 @@ import (
 )
 
 type JSReconResult struct {
-	Rr ReconResult //Standard Recon Result data
-	Parent string //This is the root domain where we found this JS resource
+	Rr     ReconResult //Standard Recon Result data
+	Parent string      //This is the root domain where we found this JS resource
 }
 
 func (jsRr *JSReconResult) parseJavascript() {
@@ -27,7 +27,6 @@ func (jsRr *JSReconResult) getOutputFolder() string {
 	return jsRr.Parent + "js" + string(os.PathSeparator)
 }
 
-
 func (jsRr *JSReconResult) saveResults(inline bool) {
 	outputPath := jsRr.getOutputFolder()
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
@@ -35,10 +34,10 @@ func (jsRr *JSReconResult) saveResults(inline bool) {
 		FatalCheck(errDir)
 	}
 	jsContent := []byte(jsRr.Rr.content)
-	if inline{
+	if inline {
 		err := ioutil.WriteFile(outputPath+CreateInlineJSFileName(), jsContent, 0644)
 		FatalCheck(err)
-	}else {
+	} else {
 		err := ioutil.WriteFile(outputPath+path.Base(jsRr.Rr.Url.Path), jsContent, 0644)
 		FatalCheck(err)
 	}
@@ -46,22 +45,22 @@ func (jsRr *JSReconResult) saveResults(inline bool) {
 }
 
 type ReconResult struct {
-	Url url.URL //What resource are we getting
-	content string //raw content of the page
-	Title string //title of page (may be null in case of JS content)
+	Url     url.URL     //What resource are we getting
+	content string      //raw content of the page
+	Title   string      //title of page (may be null in case of JS content)
 	Headers http.Header //headers from calling resource
-	paths []string //relative paths found within this resource
-	urls []string //absolute urls found within this resource
+	paths   []string    //relative paths found within this resource
+	urls    []string    //absolute urls found within this resource
 }
 
 func (rr *ReconResult) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Url string
-		Title string
+		Url     string
+		Title   string
 		Headers http.Header
 	}{
-		Url:       rr.Url.String(),
-		Title:		rr.Title,
+		Url:     rr.Url.String(),
+		Title:   rr.Title,
 		Headers: rr.Headers,
 	})
 }
@@ -97,10 +96,10 @@ func (rr *ReconResult) saveResults() {
 	err := ioutil.WriteFile(outputPath+"content.html", htmlContent, 0644)
 	FatalCheck(err)
 	//relative paths
-	err = ioutil.WriteFile(outputPath+"relativePaths.txt", []byte(strings.Join(rr.paths,"\n")), 0644)
+	err = ioutil.WriteFile(outputPath+"relativePaths.txt", []byte(strings.Join(rr.paths, "\n")), 0644)
 	FatalCheck(err)
 	//absolute urls
-	err = ioutil.WriteFile(outputPath+"fullUrls.txt", []byte(strings.Join(rr.urls,"\n")), 0644)
+	err = ioutil.WriteFile(outputPath+"fullUrls.txt", []byte(strings.Join(rr.urls, "\n")), 0644)
 	FatalCheck(err)
 	//metadata
 	reconMetadata, err := json.Marshal(rr)
@@ -109,7 +108,7 @@ func (rr *ReconResult) saveResults() {
 	FatalCheck(err)
 }
 
-func  (rr *ReconResult) parseResourceContent() {
+func (rr *ReconResult) parseResourceContent() {
 	z := html.NewTokenizer(bytes.NewReader([]byte(rr.content)))
 
 	for {
@@ -133,11 +132,11 @@ func  (rr *ReconResult) parseResourceContent() {
 						if scriptUrl.IsAbs() {
 							jsRr.Rr.Url = *scriptUrl
 						} else {
-							if strings.HasPrefix(attr.Val,"../") {
+							if strings.HasPrefix(attr.Val, "../") {
 								scriptUrl, _ = url.Parse(attr.Val[3:])
 							}
-							jsRr.Rr.Url = url.URL{Scheme:rr.Url.Scheme,Host:rr.Url.Host,Path:scriptUrl.Path,
-								RawPath:scriptUrl.RawPath, RawQuery:scriptUrl.RawQuery}
+							jsRr.Rr.Url = url.URL{Scheme: rr.Url.Scheme, Host: rr.Url.Host, Path: scriptUrl.Path,
+								RawPath: scriptUrl.RawPath, RawQuery: scriptUrl.RawQuery}
 						}
 						jsRr.Rr.fetchResource()
 						break
@@ -159,7 +158,7 @@ func  (rr *ReconResult) parseResourceContent() {
 					if attr.Key == "href" {
 						scriptUrl, _ := url.Parse(attr.Val)
 						if scriptUrl.IsAbs() {
-							rr.urls = append(rr.urls,attr.Val)
+							rr.urls = append(rr.urls, attr.Val)
 						} else {
 							rr.paths = append(rr.paths, attr.Val)
 						}
