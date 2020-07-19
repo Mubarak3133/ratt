@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/Static-Flow/ratt/pkg"
 	"log"
 	"net/url"
 	"os"
-	"ratt/pkg"
 )
 
 func main() {
