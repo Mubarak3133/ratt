@@ -23,7 +23,6 @@ func (jsRr *JSReconResult) parseJavascript() {
 }
 
 func (jsRr *JSReconResult) getOutputFolder() string {
-	fmt.Println(jsRr.Parent + "js" + string(os.PathSeparator))
 	return jsRr.Parent + "js" + string(os.PathSeparator)
 }
 
@@ -65,27 +64,35 @@ func (rr *ReconResult) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (rr *ReconResult) StartRecon() {
+func (rr *ReconResult) StartRecon(client http.Client) {
 	outputPath := rr.getOutputFolder()
 	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
 		errDir := os.MkdirAll(outputPath, 0755)
 		FatalCheck(errDir)
 	}
-	rr.fetchResource()
+	rr.fetchResource(client)
 	if len(rr.content) != 0 {
-		rr.parseResourceContent()
+		rr.parseResourceContent(client)
 		rr.saveResults()
 	}
 }
 
-func (rr *ReconResult) fetchResource() {
-	resp, err := http.Get(rr.Url.String())
-	if err != nil && resp != nil {
-		fmt.Println(resp)
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
-		rr.Headers = resp.Header
-		_ = resp.Body.Close()
-		rr.content = string(bodyBytes)
+func (rr *ReconResult) fetchResource(client http.Client) {
+	var resp *http.Response
+	var req *http.Request
+	var err error
+	req, err = http.NewRequest("GET", rr.Url.String(), nil)
+	if err == nil {
+		req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36")
+		resp, err = client.Do(req)
+		if err == nil {
+			bodyBytes, _ := ioutil.ReadAll(resp.Body)
+			rr.Headers = resp.Header
+			_ = resp.Body.Close()
+			rr.content = string(bodyBytes)
+		} else {
+			fmt.Println(err)
+		}
 	}
 }
 
@@ -113,7 +120,7 @@ func (rr *ReconResult) saveResults() {
 	FatalCheck(err)
 }
 
-func (rr *ReconResult) parseResourceContent() {
+func (rr *ReconResult) parseResourceContent(client http.Client) {
 	z := html.NewTokenizer(bytes.NewReader([]byte(rr.content)))
 
 	for {
@@ -143,7 +150,7 @@ func (rr *ReconResult) parseResourceContent() {
 							jsRr.Rr.Url = url.URL{Scheme: rr.Url.Scheme, Host: rr.Url.Host, Path: scriptUrl.Path,
 								RawPath: scriptUrl.RawPath, RawQuery: scriptUrl.RawQuery}
 						}
-						jsRr.Rr.fetchResource()
+						jsRr.Rr.fetchResource(client)
 						break
 					}
 				}
