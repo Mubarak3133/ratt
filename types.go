@@ -44,13 +44,14 @@ func (jsRr *JSReconResult) saveResults(inline bool) {
 }
 
 type ReconResult struct {
-	Url     url.URL     //What resource are we getting
-	domain  string      //internally used for if you wanted to hit a target by IP but a host header with a domain
-	content string      //raw content of the page
-	Title   string      //title of page (may be null in case of JS content)
-	Headers http.Header //headers from calling resource
-	paths   []string    //relative paths found within this resource
-	urls    []string    //absolute urls found within this resource
+	Url           url.URL     //What resource are we getting
+	outputBaseDir string      //Either os.getPwd() or the output directory flag value if set
+	domain        string      //internally used for if you wanted to hit a target by IP but a host header with a domain
+	content       string      //raw content of the page
+	Title         string      //title of page (may be null in case of JS content)
+	Headers       http.Header //headers from calling resource
+	paths         []string    //relative paths found within this resource
+	urls          []string    //absolute urls found within this resource
 }
 
 func (rr *ReconResult) MarshalJSON() ([]byte, error) {
@@ -110,17 +111,16 @@ func (rr *ReconResult) fetchResource(client http.Client) {
 }
 
 func (rr *ReconResult) getOutputFolder() string {
-	currentPath, _ := os.Getwd()
-
+	outputFolder := rr.outputBaseDir
 	if len(rr.domain) > 0 {
-		currentPath = currentPath + string(os.PathSeparator) + rr.domain + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
+		outputFolder = outputFolder + string(os.PathSeparator) + rr.domain + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
 	} else {
-		currentPath = currentPath + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
+		outputFolder = outputFolder + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
 	}
 	if len(rr.Url.RawQuery) > 0 {
-		currentPath = currentPath + string(os.PathSeparator) + rr.Url.RawQuery + string(os.PathSeparator)
+		outputFolder = outputFolder + string(os.PathSeparator) + rr.Url.RawQuery + string(os.PathSeparator)
 	}
-	return currentPath
+	return outputFolder
 }
 
 func (rr *ReconResult) saveResults() {
