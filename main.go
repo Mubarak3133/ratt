@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -19,11 +20,12 @@ func main() {
 	wg := sync.WaitGroup{}
 	targetPtr := flag.String("singletarget", "", "target to recon")
 	targetFilePtr := flag.String("targetfile", "", "file containing targets")
+	csvFilePtr := flag.String("csvfile", "", "csv file containing targets liken domain,ip,port")
 	flag.Parse()
-	if len(*targetPtr) > 0 && len(*targetFilePtr) > 0 {
-		log.Fatalln("Please on specify singletarget or targetfile")
-	} else if len(*targetPtr) == len(*targetFilePtr) {
-		log.Fatalln("Please specify singletarget or targetfile")
+	if len(*targetPtr) > 0 && len(*targetFilePtr) > 0 && len(*csvFilePtr) > 0 {
+		log.Fatalln("Please only specify one of singletarget, csvfile, or targetfile")
+	} else if len(*targetPtr)+len(*targetFilePtr) == len(*csvFilePtr) {
+		log.Fatalln("Please specify singletarget or targetfile or csvfile")
 	}
 	if len(*targetPtr) > 0 { //single target recon
 		if target, err := url.Parse(*targetPtr); err == nil {
@@ -32,7 +34,7 @@ func main() {
 		} else {
 			log.Fatalln(err)
 		}
-	} else {
+	} else if len(*targetFilePtr) > 0 {
 		dialer := net.Dialer{
 			Timeout:   time.Duration(30) * time.Second,
 			KeepAlive: time.Duration(30) * time.Second,
@@ -71,6 +73,33 @@ func main() {
 					reconTarget.StartRecon(client)
 				}
 				wg.Done()
+			}(nextTarget)
+		}
+	} else {
+		concurrentGoroutines := make(chan struct{}, 1000)
+
+		//csv file targets
+		inputFile, err := os.Open(*csvFilePtr)
+		if err != nil {
+			fmt.Println(err)
+		}
+		defer inputFile.Close()
+		scanner := bufio.NewScanner(inputFile)
+		for scanner.Scan() {
+			nextTarget := scanner.Text()
+			go func(targetToRecon string) {
+				concurrentGoroutines <- struct{}{}
+				wg.Add(1)
+				targetPieces := strings.Split(targetToRecon, ",")
+				if len(targetPieces) == 3 {
+					if targetToReconUrl, err := url.Parse(fmt.Sprintf("https://%s:%s", targetPieces[1], targetPieces[2])); err == nil {
+						fmt.Printf("Scanning %s\n", targetToReconUrl)
+						reconTarget := ReconResult{Url: *targetToReconUrl, domain: targetPieces[0]}
+						reconTarget.StartRecon(client)
+					}
+				}
+				wg.Done()
+				<-concurrentGoroutines
 			}(nextTarget)
 		}
 	}

@@ -45,6 +45,7 @@ func (jsRr *JSReconResult) saveResults(inline bool) {
 
 type ReconResult struct {
 	Url     url.URL     //What resource are we getting
+	domain  string      //internally used for if you wanted to hit a target by IP but a host header with a domain
 	content string      //raw content of the page
 	Title   string      //title of page (may be null in case of JS content)
 	Headers http.Header //headers from calling resource
@@ -83,6 +84,9 @@ func (rr *ReconResult) fetchResource(client http.Client) {
 	var err error
 	req, err = http.NewRequest("GET", rr.Url.String(), nil)
 	if err == nil {
+		if len(rr.domain) > 0 {
+			req.Host = rr.domain
+		}
 		req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36")
 		resp, err = client.Do(req)
 		if err == nil {
@@ -91,14 +95,27 @@ func (rr *ReconResult) fetchResource(client http.Client) {
 			_ = resp.Body.Close()
 			rr.content = string(bodyBytes)
 		} else {
-			fmt.Println(err)
+			if strings.Contains(err.Error(), "IP SANs") {
+				newUrl, err := url.Parse(fmt.Sprintf("%s://%s:%s", rr.Url.Scheme, rr.domain, rr.Url.Port()))
+				if err == nil {
+					fmt.Println("Trying new URL: " + newUrl.String())
+					rr.Url = *newUrl
+					rr.fetchResource(client)
+				}
+			} else {
+				//fmt.Println(err)
+			}
 		}
 	}
 }
 
 func (rr *ReconResult) getOutputFolder() string {
 	currentPath, _ := os.Getwd()
-	return currentPath + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator)
+	if len(rr.domain) > 0 {
+		return currentPath + string(os.PathSeparator) + rr.domain + string(os.PathSeparator)
+	} else {
+		return currentPath + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator)
+	}
 }
 
 func (rr *ReconResult) saveResults() {
@@ -168,11 +185,13 @@ func (rr *ReconResult) parseResourceContent(client http.Client) {
 			case t.Data == "a":
 				for _, attr := range t.Attr {
 					if attr.Key == "href" {
-						scriptUrl, _ := url.Parse(attr.Val)
-						if scriptUrl.IsAbs() {
-							rr.urls = append(rr.urls, attr.Val)
-						} else {
-							rr.paths = append(rr.paths, attr.Val)
+						scriptUrl, err := url.Parse(attr.Val)
+						if err == nil {
+							if scriptUrl.IsAbs() {
+								rr.urls = append(rr.urls, attr.Val)
+							} else {
+								rr.paths = append(rr.paths, attr.Val)
+							}
 						}
 					}
 				}
