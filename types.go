@@ -111,11 +111,16 @@ func (rr *ReconResult) fetchResource(client http.Client) {
 
 func (rr *ReconResult) getOutputFolder() string {
 	currentPath, _ := os.Getwd()
+
 	if len(rr.domain) > 0 {
-		return currentPath + string(os.PathSeparator) + rr.domain + string(os.PathSeparator)
+		currentPath = currentPath + string(os.PathSeparator) + rr.domain + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
 	} else {
-		return currentPath + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator)
+		currentPath = currentPath + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
 	}
+	if len(rr.Url.RawQuery) > 0 {
+		currentPath = currentPath + string(os.PathSeparator) + rr.Url.RawQuery + string(os.PathSeparator)
+	}
+	return currentPath
 }
 
 func (rr *ReconResult) saveResults() {
