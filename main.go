@@ -28,9 +28,9 @@ func main() {
 	var cookiesToAdd CookiesToAdd
 
 	if len(*cookiesPtr) > 0 {
-		err := json.Unmarshal([]byte(*cookiesPtr), cookiesToAdd)
+		err := json.Unmarshal([]byte(*cookiesPtr), &cookiesToAdd)
 		if err != nil {
-			log.Fatalln("Malformed cookie input")
+			log.Fatalln("Malformed cookie input: " + err.Error())
 		}
 	}
 

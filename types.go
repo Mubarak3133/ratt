@@ -6,6 +6,7 @@ import (
 	"github.com/gocolly/colly"
 	"io/ioutil"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path"
@@ -63,8 +64,12 @@ func (rr *ReconResult) reconIt(client http.Client) {
 		colly.MaxDepth(rr.depth),
 		colly.Async(),
 	)
-	c.ParseHTTPErrorResponse = true
 	c.SetClient(&client)
+	jar, err := cookiejar.New(nil)
+	FatalCheck(err)
+	c.SetCookieJar(jar)
+	c.ParseHTTPErrorResponse = true
+
 	// Limit the maximum parallelism to 2
 	// This is necessary if the goroutines are dynamically
 	// created to control the limit of simultaneous requests.
