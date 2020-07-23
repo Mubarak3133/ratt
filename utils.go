@@ -11,6 +11,15 @@ func FatalCheck(e error) {
 	}
 }
 
+func Find(slice []string, val string) bool {
+	for _, item := range slice {
+		if item == val {
+			return true
+		}
+	}
+	return false
+}
+
 func CreateInlineJSFileName() string {
 	seededRand := rand.New(
 		rand.NewSource(time.Now().UnixNano()))

@@ -30,7 +30,6 @@ func main() {
 	baseDir, _ := os.Getwd()
 	if len(*outputPtr) > 0 {
 		baseDir = *outputPtr
-		fmt.Println(baseDir)
 	}
 	var client http.Client
 	dialer := net.Dialer{
@@ -58,12 +57,14 @@ func main() {
 
 	if len(*targetPtr) > 0 { //single target recon
 		if target, err := url.Parse(*targetPtr); err == nil {
+			fmt.Println("Scanning: " + target.String())
 			reconTarget := ReconResult{Url: *target, outputBaseDir: baseDir}
 			reconTarget.StartRecon(client)
 		} else {
 			log.Fatalln(err)
 		}
 	} else if len(*targetFilePtr) > 0 {
+		concurrentGoroutines := make(chan struct{}, 1000)
 		//multi target recon
 		inputFile, err := os.Open(*targetFilePtr)
 		if err != nil {
@@ -75,12 +76,15 @@ func main() {
 			nextTarget := scanner.Text()
 			fmt.Printf("Scanning %s\n", nextTarget)
 			go func(targetToRecon string) {
+				concurrentGoroutines <- struct{}{}
 				wg.Add(1)
 				if targetToReconUrl, err := url.Parse(targetToRecon); err == nil {
+					fmt.Println("Scanning: " + targetToReconUrl.String())
 					reconTarget := ReconResult{Url: *targetToReconUrl, outputBaseDir: baseDir}
 					reconTarget.StartRecon(client)
 				}
 				wg.Done()
+				<-concurrentGoroutines
 			}(nextTarget)
 		}
 	} else {

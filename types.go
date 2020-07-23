@@ -1,57 +1,26 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/net/html"
+	"github.com/gocolly/colly"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 )
 
-type JSReconResult struct {
-	Rr     ReconResult //Standard Recon Result data
-	Parent string      //This is the root domain where we found this JS resource
-}
-
-func (jsRr *JSReconResult) parseJavascript() {
-
-}
-
-func (jsRr *JSReconResult) getOutputFolder() string {
-	return jsRr.Parent + "js" + string(os.PathSeparator)
-}
-
-func (jsRr *JSReconResult) saveResults(inline bool) {
-	outputPath := jsRr.getOutputFolder()
-	if _, err := os.Stat(outputPath); os.IsNotExist(err) {
-		errDir := os.MkdirAll(outputPath, 0755)
-		FatalCheck(errDir)
-	}
-	jsContent := []byte(jsRr.Rr.content)
-	if inline {
-		err := ioutil.WriteFile(outputPath+CreateInlineJSFileName(), jsContent, 0644)
-		FatalCheck(err)
-	} else {
-		err := ioutil.WriteFile(outputPath+path.Base(jsRr.Rr.Url.Path), jsContent, 0644)
-		FatalCheck(err)
-	}
-
-}
+const jsFolder = "js" + string(os.PathSeparator)
 
 type ReconResult struct {
 	Url           url.URL     //What resource are we getting
 	outputBaseDir string      //Either os.getPwd() or the output directory flag value if set
 	domain        string      //internally used for if you wanted to hit a target by IP but a host header with a domain
-	content       string      //raw content of the page
 	Title         string      //title of page (may be null in case of JS content)
 	Headers       http.Header //headers from calling resource
-	paths         []string    //relative paths found within this resource
-	urls          []string    //absolute urls found within this resource
 }
 
 func (rr *ReconResult) MarshalJSON() ([]byte, error) {
@@ -72,50 +41,97 @@ func (rr *ReconResult) StartRecon(client http.Client) {
 		errDir := os.MkdirAll(outputPath, 0755)
 		FatalCheck(errDir)
 	}
-	rr.fetchResource(client)
-	if len(rr.content) != 0 {
-		rr.parseResourceContent(client)
-		rr.saveResults()
+	if _, err := os.Stat(outputPath + jsFolder); os.IsNotExist(err) {
+		errDir := os.MkdirAll(outputPath+jsFolder, 0755)
+		FatalCheck(errDir)
 	}
+	rr.reconIt()
 }
 
-func (rr *ReconResult) fetchResource(client http.Client) {
-	var resp *http.Response
-	var req *http.Request
-	var err error
-	req, err = http.NewRequest("GET", rr.Url.String(), nil)
-	if err == nil {
-		if len(rr.domain) > 0 {
-			req.Host = rr.domain
+func (rr *ReconResult) reconIt() {
+
+	// Instantiate default collector
+	c := colly.NewCollector(
+		// MaxDepth is 2, so only the links on the scraped page
+		// and links on those pages are visited
+		colly.MaxDepth(5),
+		colly.Async(),
+	)
+
+	// Limit the maximum parallelism to 2
+	// This is necessary if the goroutines are dynamically
+	// created to control the limit of simultaneous requests.
+	//
+	// Parallelism can be controlled also by spawning fixed
+	// number of go routines.
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2})
+
+	c.OnHTML("script", func(element *colly.HTMLElement) {
+		javascript := element.Attr("src")
+		if len(javascript) != 0 {
+			//fmt.Println("Found JS: "+javascript)
+			element.Request.Visit(javascript)
 		}
-		req.Header.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.106 Safari/537.36")
-		resp, err = client.Do(req)
+	})
+
+	c.OnHTML("title", func(element *colly.HTMLElement) {
+		rr.Title = element.Text
+	})
+
+	c.OnRequest(func(request *colly.Request) {
+		fmt.Println("Visiting: " + request.URL.String())
+	})
+
+	c.OnScraped(func(response *colly.Response) {
+		rr.saveResults(response)
+	})
+
+	c.OnHTML("form[action]", func(e *colly.HTMLElement) {
+		link := e.Attr("action")
+		// Print link
+
+		foundUrl, err := url.Parse(link)
 		if err == nil {
-			bodyBytes, _ := ioutil.ReadAll(resp.Body)
-			rr.Headers = resp.Header
-			_ = resp.Body.Close()
-			rr.content = string(bodyBytes)
-		} else {
-			if strings.Contains(err.Error(), "IP SANs") {
-				newUrl, err := url.Parse(fmt.Sprintf("%s://%s:%s", rr.Url.Scheme, rr.domain, rr.Url.Port()))
-				if err == nil {
-					fmt.Println("Trying new URL: " + newUrl.String())
-					rr.Url = *newUrl
-					rr.fetchResource(client)
-				}
-			} else {
-				//fmt.Println(err)
+			if !foundUrl.IsAbs() {
+				//fmt.Println(link)
+				// Visit link found on page on a new thread
+				e.Request.Visit(link)
 			}
+		} else {
+			fmt.Println(err)
 		}
-	}
+
+	})
+
+	// On every a element which has href attribute call callback
+	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
+		link := e.Attr("href")
+		// Print link
+
+		foundUrl, err := url.Parse(link)
+		if err == nil {
+			if !foundUrl.IsAbs() {
+				//fmt.Println(link)
+				// Visit link found on page on a new thread
+				e.Request.Visit(link)
+			}
+		} else {
+			fmt.Println(err)
+		}
+
+	})
+
+	c.Visit(rr.Url.String())
+	// Wait until threads are finished
+	c.Wait()
 }
 
 func (rr *ReconResult) getOutputFolder() string {
 	outputFolder := rr.outputBaseDir
 	if len(rr.domain) > 0 {
-		outputFolder = outputFolder + string(os.PathSeparator) + rr.domain + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
+		outputFolder = outputFolder + string(os.PathSeparator) + rr.domain + string(os.PathSeparator)
 	} else {
-		outputFolder = outputFolder + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator) + rr.Url.EscapedPath() + string(os.PathSeparator)
+		outputFolder = outputFolder + string(os.PathSeparator) + rr.Url.Hostname() + string(os.PathSeparator)
 	}
 	if len(rr.Url.RawQuery) > 0 {
 		outputFolder = outputFolder + string(os.PathSeparator) + rr.Url.RawQuery + string(os.PathSeparator)
@@ -123,91 +139,41 @@ func (rr *ReconResult) getOutputFolder() string {
 	return outputFolder
 }
 
-func (rr *ReconResult) saveResults() {
-	outputPath := rr.getOutputFolder()
-	//html content
-	htmlContent := []byte(rr.content)
-	err := ioutil.WriteFile(outputPath+"content.html", htmlContent, 0644)
-	FatalCheck(err)
-	//relative paths
-	err = ioutil.WriteFile(outputPath+"relativePaths.txt", []byte(strings.Join(rr.paths, "\n")), 0644)
-	FatalCheck(err)
-	//absolute urls
-	err = ioutil.WriteFile(outputPath+"absolutePaths.txt", []byte(strings.Join(rr.urls, "\n")), 0644)
-	FatalCheck(err)
-	//metadata
-	reconMetadata, err := json.Marshal(rr)
-	FatalCheck(err)
-	err = ioutil.WriteFile(outputPath+"metadata.txt", reconMetadata, 0644)
-	FatalCheck(err)
-}
-
-func (rr *ReconResult) parseResourceContent(client http.Client) {
-	z := html.NewTokenizer(bytes.NewReader([]byte(rr.content)))
-
-	for {
-		tt := z.Next()
-		switch {
-		case tt == html.ErrorToken:
-			// End of the document, we're done
-			return
-		case tt == html.StartTagToken:
-			t := z.Token()
-			switch {
-			case t.Data == "script":
-				inline := true
-				var jsRr JSReconResult
-				jsRr.Parent = rr.getOutputFolder()
-				for _, attr := range t.Attr {
-					if attr.Key == "src" {
-						inline = false
-						scriptUrl, _ := url.Parse(attr.Val)
-						rr.Url.Hostname()
-						if scriptUrl.IsAbs() {
-							jsRr.Rr.Url = *scriptUrl
-						} else {
-							if strings.HasPrefix(attr.Val, "../") {
-								scriptUrl, _ = url.Parse(attr.Val[3:])
-							}
-							jsRr.Rr.Url = url.URL{Scheme: rr.Url.Scheme, Host: rr.Url.Host, Path: scriptUrl.Path,
-								RawPath: scriptUrl.RawPath, RawQuery: scriptUrl.RawQuery}
-						}
-						jsRr.Rr.fetchResource(client)
-						break
-					}
-				}
-				if inline {
-					innerToken := z.Next()
-					//just make sure it's actually a text token
-					if innerToken == html.TextToken {
-						//report the page title and break out of the loop
-						jsRr.Rr.content = z.Token().Data
-					}
-				}
-				jsRr.parseJavascript()
-				jsRr.saveResults(inline)
-
-			case t.Data == "a":
-				for _, attr := range t.Attr {
-					if attr.Key == "href" {
-						scriptUrl, err := url.Parse(attr.Val)
-						if err == nil {
-							if scriptUrl.IsAbs() {
-								rr.urls = append(rr.urls, attr.Val)
-							} else {
-								rr.paths = append(rr.paths, attr.Val)
-							}
-						}
-					}
-				}
-			case t.Data == "title":
-				innerToken := z.Next()
-				//just make sure it's actually a text token
-				if innerToken == html.TextToken {
-					//report the page title and break out of the loop
-					rr.Title = z.Token().Data
+func (rr *ReconResult) saveResults(response *colly.Response) {
+	if strings.HasSuffix(response.Request.URL.Path, ".js") {
+		outputPath := rr.getOutputFolder() + jsFolder + path.Base(response.Request.URL.Path)
+		err := response.Save(outputPath)
+		FatalCheck(err)
+	} else {
+		outputPath := filepath.FromSlash(rr.getOutputFolder() + response.Request.URL.Path)
+		outputPath = strings.ReplaceAll(outputPath, string(os.PathSeparator)+string(os.PathSeparator), string(os.PathSeparator))
+		fmt.Println(outputPath)
+		if strings.HasSuffix(outputPath, string(os.PathSeparator)) {
+			outputPath = outputPath + "content"
+		}
+		//var err error
+		err := response.Save(outputPath + ".html")
+		if err != nil {
+			//if filepath.Clean(filepath.FromSlash(response.Request.URL.Path))
+			//directory doesn't exist yet, lop off all but the base, make that dir then add the base as a file
+			fmt.Println("New Directory: " + outputPath[:strings.LastIndex(outputPath, string(os.PathSeparator))])
+			err = os.MkdirAll(outputPath[:strings.LastIndex(outputPath, string(os.PathSeparator))], 0755)
+			FatalCheck(err)
+			err := response.Save(outputPath + ".html")
+			if err != nil {
+				if !strings.Contains(err.Error(), "is a directory") {
+					//err := response.Save(outputPath + string(os.PathSeparator) + "content.html")
+					FatalCheck(err)
 				}
 			}
+
 		}
+		//metadata
+		rr.Headers = *response.Headers
+		reconMetadata, err := json.Marshal(rr)
+		FatalCheck(err)
+		err = ioutil.WriteFile(outputPath[:strings.LastIndex(outputPath, string(os.PathSeparator))+1]+"metadata.json", reconMetadata, 0644)
+		FatalCheck(err)
 	}
+
 }
