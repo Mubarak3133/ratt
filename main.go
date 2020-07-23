@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -20,7 +21,18 @@ func main() {
 	targetFilePtr := flag.String("targetfile", "", "file containing targets")
 	csvFilePtr := flag.String("csvfile", "", "csv file containing targets liken domain,ip,port")
 	outputPtr := flag.String("output", "", "directory to store output")
+	cookiesPtr := flag.String("cookies", "", "json array of cookies like {'cookies':['name':'value']}")
+	depthPtr := flag.Int("depth", 3, "how many levels deep to crawl the target(s)")
 	flag.Parse()
+
+	var cookiesToAdd CookiesToAdd
+
+	if len(*cookiesPtr) > 0 {
+		err := json.Unmarshal([]byte(*cookiesPtr), cookiesToAdd)
+		if err != nil {
+			log.Fatalln("Malformed cookie input")
+		}
+	}
 
 	if len(*targetPtr) > 0 && len(*targetFilePtr) > 0 && len(*csvFilePtr) > 0 {
 		log.Fatalln("Please only specify one of singletarget, csvfile, or targetfile")
@@ -58,7 +70,7 @@ func main() {
 	if len(*targetPtr) > 0 { //single target recon
 		if target, err := url.Parse(*targetPtr); err == nil {
 			fmt.Println("Scanning: " + target.String())
-			reconTarget := ReconResult{Url: *target, outputBaseDir: baseDir}
+			reconTarget := ReconResult{Url: *target, outputBaseDir: baseDir, cookies: cookiesToAdd, depth: *depthPtr}
 			reconTarget.StartRecon(client)
 		} else {
 			log.Fatalln(err)
@@ -80,7 +92,7 @@ func main() {
 				wg.Add(1)
 				if targetToReconUrl, err := url.Parse(targetToRecon); err == nil {
 					fmt.Println("Scanning: " + targetToReconUrl.String())
-					reconTarget := ReconResult{Url: *targetToReconUrl, outputBaseDir: baseDir}
+					reconTarget := ReconResult{Url: *targetToReconUrl, outputBaseDir: baseDir, cookies: cookiesToAdd, depth: *depthPtr}
 					reconTarget.StartRecon(client)
 				}
 				wg.Done()
@@ -106,7 +118,7 @@ func main() {
 				if len(targetPieces) == 3 {
 					if targetToReconUrl, err := url.Parse(fmt.Sprintf("https://%s:%s", targetPieces[1], targetPieces[2])); err == nil {
 						fmt.Printf("Scanning %s\n", targetToReconUrl)
-						reconTarget := ReconResult{Url: *targetToReconUrl, domain: targetPieces[0], outputBaseDir: baseDir}
+						reconTarget := ReconResult{Url: *targetToReconUrl, domain: targetPieces[0], outputBaseDir: baseDir, cookies: cookiesToAdd, depth: *depthPtr}
 						reconTarget.StartRecon(client)
 					}
 				}

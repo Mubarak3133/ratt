@@ -15,12 +15,18 @@ import (
 
 const jsFolder = "js" + string(os.PathSeparator)
 
+type CookiesToAdd struct {
+	Cookies []http.Cookie
+}
+
 type ReconResult struct {
-	Url           url.URL     //What resource are we getting
-	outputBaseDir string      //Either os.getPwd() or the output directory flag value if set
-	domain        string      //internally used for if you wanted to hit a target by IP but a host header with a domain
-	Title         string      //title of page (may be null in case of JS content)
-	Headers       http.Header //headers from calling resource
+	Url           url.URL      //What resource are we getting
+	outputBaseDir string       //Either os.getPwd() or the output directory flag value if set
+	domain        string       //internally used for if you wanted to hit a target by IP but a host header with a domain
+	Title         string       //title of page (may be null in case of JS content)
+	Headers       http.Header  //headers from calling resource
+	cookies       CookiesToAdd //cookies to add to the requests
+	depth         int          //depth to crawl target
 }
 
 func (rr *ReconResult) MarshalJSON() ([]byte, error) {
@@ -45,26 +51,27 @@ func (rr *ReconResult) StartRecon(client http.Client) {
 		errDir := os.MkdirAll(outputPath+jsFolder, 0755)
 		FatalCheck(errDir)
 	}
-	rr.reconIt()
+	rr.reconIt(client)
 }
 
-func (rr *ReconResult) reconIt() {
+func (rr *ReconResult) reconIt(client http.Client) {
 
 	// Instantiate default collector
 	c := colly.NewCollector(
 		// MaxDepth is 2, so only the links on the scraped page
 		// and links on those pages are visited
-		colly.MaxDepth(5),
+		colly.MaxDepth(rr.depth),
 		colly.Async(),
 	)
-
+	c.ParseHTTPErrorResponse = true
+	c.SetClient(&client)
 	// Limit the maximum parallelism to 2
 	// This is necessary if the goroutines are dynamically
 	// created to control the limit of simultaneous requests.
 	//
 	// Parallelism can be controlled also by spawning fixed
 	// number of go routines.
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2})
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
 
 	c.OnHTML("script", func(element *colly.HTMLElement) {
 		javascript := element.Attr("src")
@@ -79,6 +86,12 @@ func (rr *ReconResult) reconIt() {
 	})
 
 	c.OnRequest(func(request *colly.Request) {
+		for _, cookieToAdd := range rr.cookies.Cookies {
+			err := c.SetCookies(request.URL.String(),
+				[]*http.Cookie{{Name: cookieToAdd.Name,
+					Value: cookieToAdd.Value}})
+			FatalCheck(err)
+		}
 		fmt.Println("Visiting: " + request.URL.String())
 	})
 
@@ -106,6 +119,7 @@ func (rr *ReconResult) reconIt() {
 	// On every a element which has href attribute call callback
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
+		link = strings.TrimSpace(link)
 		// Print link
 
 		foundUrl, err := url.Parse(link)
